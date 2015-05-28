@@ -1,10 +1,8 @@
 package io.ripc.reactor.protocol.tcp;
 
-import io.ripc.protocol.tcp.TcpConnection;
-import io.ripc.protocol.tcp.TcpHandler;
 import io.ripc.protocol.tcp.TcpServer;
-import org.reactivestreams.Publisher;
 import reactor.Environment;
+import reactor.core.dispatch.SynchronousDispatcher;
 import reactor.io.net.ReactorChannelHandler;
 
 /**
@@ -19,26 +17,29 @@ public class ReactorTcpServer<R, W> {
 
 	private final TcpServer<R, W> transport;
 
-	public ReactorTcpServer(TcpServer<R, W> transport) {
+	ReactorTcpServer(TcpServer<R, W> transport) {
 		this.transport = transport;
 	}
 
 	public ReactorTcpServer<R, W> start(ReactorChannelHandler<R, W, ReactorTcpConnection<R, W>> handler) {
-		transport.start(new TcpHandler<R, W>() {
-			@Override
-			public Publisher<Void> handle(TcpConnection<R, W> connection) {
-				return handler.apply(new ReactorTcpConnection<>(Environment.get(),
-				                                                null,
-				                                                1024,
-				                                                Environment.sharedDispatcher(),
-				                                                connection));
-			}
+		transport.startAndAwait(conn -> {
+			return handler.apply(new ReactorTcpConnection<>(Environment.get(),
+			                                                null,
+			                                                1024,
+			                                                SynchronousDispatcher.INSTANCE,
+			                                                conn));
 		});
 		return this;
 	}
 
 	public boolean shutdown() {
-		return transport.shutdown();
+		boolean b = transport.shutdown();
+		transport.awaitShutdown();
+		return b;
+	}
+
+	public static <R, W> ReactorTcpServer<R, W> create(TcpServer<R, W> transport) {
+		return new ReactorTcpServer<>(transport);
 	}
 
 }

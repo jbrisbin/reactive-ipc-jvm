@@ -34,10 +34,7 @@ public class ReactorTcpConnection<R, W> extends ChannelStream<R, W> {
 
 	@Override
 	protected void doSubscribeWriter(Publisher<? extends W> writer, Subscriber<? super Void> postWriter) {
-		Publisher<Void> p = transport.write(writer);
-		if (null != postWriter) {
-			p.subscribe(postWriter);
-		}
+		transport.write(writer).subscribe(postWriter);
 	}
 
 	@Override
