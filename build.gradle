@@ -102,8 +102,8 @@ project('ripc-transport-netty4-examples') {
     // ripc-core
     compile project(":ripc-transport-netty4"),
         "io.reactivex:rxjava:$rxjava1Version",
-        "io.reactivex:rxjava-reactive-streams:$rxjavaRsVersion",
-        "org.slf4j:slf4j-simple:$slf4jVersion"
+        "io.reactivex:rxjava-reactive-streams:$rxjavaRsVersion"
+    runtime "ch.qos.logback:logback-classic:$logbackVersion"
   }
 }
 
@@ -112,7 +112,7 @@ project('ripc-transport-netty4') {
   dependencies {
     // ripc-tcp
     compile project(":ripc-protocol-tcp"),
-        "io.netty:netty-codec:$nettyVersion"
+        "io.netty:netty-all:$nettyVersion"
   }
 }
 

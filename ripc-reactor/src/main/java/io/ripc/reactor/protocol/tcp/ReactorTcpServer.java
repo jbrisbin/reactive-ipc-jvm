@@ -1,9 +1,9 @@
 package io.ripc.reactor.protocol.tcp;
 
 import io.ripc.protocol.tcp.TcpServer;
+import org.reactivestreams.Publisher;
 import reactor.Environment;
-import reactor.core.dispatch.SynchronousDispatcher;
-import reactor.io.net.ReactorChannelHandler;
+import reactor.fn.Function;
 
 /**
  * Created by jbrisbin on 5/28/15.
@@ -21,14 +21,8 @@ public class ReactorTcpServer<R, W> {
 		this.transport = transport;
 	}
 
-	public ReactorTcpServer<R, W> start(ReactorChannelHandler<R, W, ReactorTcpConnection<R, W>> handler) {
-		transport.startAndAwait(conn -> {
-			return handler.apply(new ReactorTcpConnection<>(Environment.get(),
-			                                                null,
-			                                                1024,
-			                                                SynchronousDispatcher.INSTANCE,
-			                                                conn));
-		});
+	public ReactorTcpServer<R, W> start(Function<ReactorTcpConnection<R, W>, Publisher<Void>> handler) {
+		transport.startAndAwait(conn -> handler.apply(new ReactorTcpConnection<>(conn)));
 		return this;
 	}
 
