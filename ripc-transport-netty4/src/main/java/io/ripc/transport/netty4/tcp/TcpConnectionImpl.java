@@ -44,7 +44,9 @@ public class TcpConnectionImpl<R, W> implements TcpConnection<R, W> {
 
         private final AtomicLong demand = new AtomicLong(0);
 
-        private boolean cancelled = false;
+        private boolean cancelled;
+
+        private boolean processingOnNext;
 
 
         public InputAdapter(Subscriber<? super R> subscriber) {
@@ -58,22 +60,25 @@ public class TcpConnectionImpl<R, W> implements TcpConnection<R, W> {
         @Override
         public void request(long n) {
             if (n < 1) {
-                cancelled = true;
-                subscriber.onError(new IllegalStateException("Cannot request non-positive number."));
+                onError(new IllegalStateException("Cannot request non-positive number."));
             }
-            else if (demand.get() + n < 1) {
+            else if (n == Long.MAX_VALUE || demand.get() + n < 1) {
                 demand.set(Long.MAX_VALUE);
-                nettyChannel.read();
+                nettyChannel.config().setAutoRead(true);
             }
             else {
                 demand.addAndGet(n);
-                nettyChannel.read();
+                nettyChannel.config().setAutoRead(false);
+                if (!processingOnNext) {
+                    nettyChannel.read();
+                }
             }
         }
 
         @Override
         public void cancel() {
             cancelled = true;
+            nettyChannel.close();
         }
 
         @Override
@@ -83,23 +88,38 @@ public class TcpConnectionImpl<R, W> implements TcpConnection<R, W> {
 
         @Override
         public void onNext(R data) {
-            subscriber.onNext(data);
-            if (demand.decrementAndGet() > 0) {
-                nettyChannel.read();
+            if (cancelled) {
+                return;
+            }
+            try {
+                processingOnNext = true;
+                subscriber.onNext(data);
+                if (demand.get() != Long.MAX_VALUE && demand.get() > 0) {
+                    if (demand.decrementAndGet() > 0) {
+                        nettyChannel.read();
+                    }
+                }
+            }
+            finally {
+                processingOnNext = false;
             }
         }
 
         @Override
         public void onError(Throwable ex) {
+            if (cancelled) {
+                return;
+            }
             cancel();
             subscriber.onError(ex);
         }
 
         @Override
         public void onComplete() {
-            subscriber.onComplete();
+            if (!cancelled) {
+                subscriber.onComplete();
+            }
         }
-
     }
 
     private static class FutureToSubscriberBridge implements ChannelFutureListener {
