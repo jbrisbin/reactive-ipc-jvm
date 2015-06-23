@@ -1,10 +1,7 @@
 package io.ripc.reactor.protocol.tcp;
 
-import java.nio.charset.Charset;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -18,34 +15,36 @@ import io.netty.handler.codec.string.StringEncoder;
 import io.netty.util.CharsetUtil;
 import io.ripc.protocol.tcp.TcpServer;
 import io.ripc.transport.netty4.tcp.Netty4TcpServer;
-import org.reactivestreams.Subscriber;
-import org.reactivestreams.Subscription;
-import reactor.rx.Promise;
-import reactor.rx.Promises;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import reactor.rx.Streams;
+
+import java.nio.charset.Charset;
 
 public class CodecSample {
 
+    private static final Logger LOG = LoggerFactory.getLogger(CodecSample.class);
 
     public static void main(String... args) throws InterruptedException {
 
-      echoWithLineBasedFrameDecoder();
-//    echoJsonStreamDecoding();
+        //echoWithLineBasedFrameDecoder();
+        echoJsonStreamDecoding();
 
     }
 
     private static void echoWithLineBasedFrameDecoder() {
 
-        TcpServer<String, String> transport = Netty4TcpServer.<String, String>create(0,
+        TcpServer<String, String> transport = Netty4TcpServer.<String, String>create(
+                0,
                 new ChannelInitializer<Channel>() {
                     @Override
                     protected void initChannel(Channel channel) throws Exception {
                         channel.config().setOption(ChannelOption.SO_RCVBUF, 1);
                         channel.config().setOption(ChannelOption.RCVBUF_ALLOCATOR, new FixedRecvByteBufAllocator(1));
-                        channel.pipeline().addFirst(
-                                new LineBasedFrameDecoder(256),
-                                new StringDecoder(CharsetUtil.UTF_8),
-                                new StringEncoder(CharsetUtil.UTF_8));
+                        channel.pipeline()
+                               .addFirst(new LineBasedFrameDecoder(256),
+                                         new StringDecoder(CharsetUtil.UTF_8),
+                                         new StringEncoder(CharsetUtil.UTF_8));
                     }
                 });
 
@@ -59,60 +58,29 @@ public class CodecSample {
 //                });
 
         ReactorTcpServer.create(transport)
-                .start(connection -> {
-                    connection.subscribe(new Subscriber<String>() {
-
-                        private Subscription subscription;
-
-                        @Override
-                        public void onSubscribe(Subscription subscription) {
-                            this.subscription = subscription;
-                            subscription.request(1);
-                        }
-
-                        @Override
-                        public void onNext(String s) {
-                            connection.writeWith(Streams.just("Hello " + s + "\n"))
-                                    .subscribe(new Subscriber<Void>() {
-                                        @Override
-                                        public void onSubscribe(Subscription s) {}
-
-                                        @Override
-                                        public void onNext(Void aVoid) {}
-
-                                        @Override
-                                        public void onError(Throwable t) {}
-
-                                        @Override
-                                        public void onComplete() {
-                                            subscription.request(1);
-                                        }
-                                    });
-                        }
-
-                        @Override
-                        public void onError(Throwable t) {
-                            t.printStackTrace();
-                        }
-
-                        @Override
-                        public void onComplete() {
-                            System.out.println("Connection input complete");
-                        }
-                    });
-                    return Streams.never();
-                });
+                        .start(connection -> {
+                            connection.log("input")
+                                      .observeComplete(v -> {
+                                          LOG.info("Connection input complete");
+                                      })
+                                      .capacity(1)
+                                      .consume(s -> Streams.wrap(connection.writeWith(Streams.just("Hello "
+                                                                                                   + s
+                                                                                                   + "\n"))).consume());
+                            return Streams.never();
+                        });
     }
 
     private static void echoJsonStreamDecoding() {
 
-        TcpServer<Person, Person> transport = Netty4TcpServer.<Person, Person>create(0,
+        TcpServer<Person, Person> transport = Netty4TcpServer.<Person, Person>create(
+                0,
                 new ChannelInitializer<Channel>() {
                     @Override
                     protected void initChannel(Channel channel) throws Exception {
-                        channel.pipeline().addFirst(
-                                new JsonObjectDecoder(),
-                                new JsonCodec());
+                        channel.pipeline()
+                               .addFirst(new JsonObjectDecoder(),
+                                         new JsonCodec());
                     }
                 });
 
@@ -130,57 +98,22 @@ public class CodecSample {
 //                });
 
         ReactorTcpServer.create(transport)
-                .start(connection -> {
-                    connection.subscribe(new Subscriber<Person>() {
-
-                        private Subscription subscription;
-
-                        @Override
-                        public void onSubscribe(Subscription subscription) {
-                            this.subscription = subscription;
-                            subscription.request(1);
-                        }
-
-                        @Override
-                        public void onNext(Person inPerson) {
-
-                            Person outPerson = new Person();
-                            outPerson.setFirstName(inPerson.getLastName());
-                            outPerson.setLastName(inPerson.getFirstName());
-
-                            connection.writeWith(Streams.just(outPerson))
-                                    .subscribe(new Subscriber<Void>() {
-                                        @Override
-                                        public void onSubscribe(Subscription s) {}
-
-                                        @Override
-                                        public void onNext(Void aVoid) {}
-
-                                        @Override
-                                        public void onError(Throwable t) {}
-
-                                        @Override
-                                        public void onComplete() {
-                                            subscription.request(1);
-                                        }
-                                    });
-                        }
-
-                        @Override
-                        public void onError(Throwable t) {
-                            t.printStackTrace();
-                        }
-
-                        @Override
-                        public void onComplete() {
-                            System.out.println("Connection input complete");
-                        }
-                    });
-                    return Streams.never();
-                });
+                        .start(connection -> {
+                            connection.log("input")
+                                      .observeComplete(v -> {
+                                          LOG.info("Connection input complete");
+                                      })
+                                      .capacity(1)
+                                      .consume(inPerson -> {
+                                          Person outPerson = new Person();
+                                          outPerson.setFirstName(inPerson.getLastName());
+                                          outPerson.setLastName(inPerson.getFirstName());
+                                          Streams.wrap(connection.writeWith(Streams.just(outPerson))).consume();
+                                      });
+                            return Streams.never();
+                        });
 
     }
-
 
     private static class JsonCodec extends ChannelDuplexHandler {
 
